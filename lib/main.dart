@@ -10,7 +10,7 @@ void main() async {
 
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings(
-        'launcher_icon',
+        '@mipmap/launcher_icon',
       ); // ensure you have this drawable
 
   const DarwinInitializationSettings initializationSettingsDarwin =

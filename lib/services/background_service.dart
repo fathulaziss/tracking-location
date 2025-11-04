@@ -25,8 +25,8 @@ Future<void> initializeService() async {
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: false,
-      isForegroundMode: false,
-      notificationChannelId: 'location_channel',
+      isForegroundMode: true,
+      notificationChannelId: 'hajj_channel_id',
       initialNotificationTitle: 'Tracking Location',
       initialNotificationContent: 'Service is starting...',
       foregroundServiceNotificationId: 888,
@@ -49,7 +49,8 @@ void onStart(ServiceInstance service) async {
     service.on("startScheduler").listen((event) {
       if (event != null && event["minutes"] != null) {
         int newMinutes = event["minutes"];
-        int userId = event["userId"];
+        String deviceId = event["deviceId"] ?? "";
+        String deviceName = event['deviceName'] ?? "";
         logger.i(
           "Background tracking started with interval: $newMinutes minutes",
         );
@@ -65,7 +66,7 @@ void onStart(ServiceInstance service) async {
             logger.i(
               '📍 Background location: ${pos.latitude}, ${pos.longitude}',
             );
-            await sendLocation(userId, pos.latitude, pos.longitude);
+            await sendLocation(deviceId,deviceName, pos.latitude, pos.longitude);
           } catch (e) {
             logger.i('⚠️ Failed to get location: $e');
           }
@@ -80,12 +81,15 @@ void onStart(ServiceInstance service) async {
   }
 }
 
-Future<void> sendLocation(int userId, double lat, double lon) async {
+Future<void> sendLocation(String deviceId,String deviceName, double lat, double lon) async {
   var batteryLevel = await battery.batteryLevel;
   final currentDateTime = DateTime.now().toIso8601String();
 
   final data = {
-    'user_id': userId,
+    'device': {
+      'id' : deviceId,
+      'name' : deviceId
+    },
     'latitude': lat,
     'longitude': lon,
     'created_at': currentDateTime,

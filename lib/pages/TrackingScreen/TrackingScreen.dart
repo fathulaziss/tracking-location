@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -48,8 +49,10 @@ class _TrackingScreenState extends State<TrackingScreen>
   static const int userId = 1;
   final GlobalKey<ListInformationState> _listInfoKey =
       GlobalKey<ListInformationState>();
-
-  void _notifyListRefresh() {
+  String _deviceInfo = 'Memuat informasi perangkat...';
+  String _deviceId = "";
+  String _deviceName = "";
+   void _notifyListRefresh() {
     // 2. Use the key to access the state and call the refresh method
     _listInfoKey.currentState?.loadTrackingRecords();
   }
@@ -59,6 +62,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _onCheckLocationPressed();
+    _getDeviceInfo();
     // Run initial cleanup on app start
     // LocalStorageHelper.cleanupOldRecords();
     LocalStorageHelper.clearAllHistory();
@@ -69,6 +73,39 @@ class _TrackingScreenState extends State<TrackingScreen>
         await _syncOfflineData();
       }
     });
+  }
+
+  // --- DEVICE INFO LOGIC (Tidak berubah) ---
+  Future<void> _getDeviceInfo() async {
+    String info = 'Tidak tersedia';
+    String? id = '';
+    String? name = '';
+    try {
+      if (Platform.isAndroid) {
+        AndroidDeviceInfo androidInfo = await deviceInfoPlugin.androidInfo;
+        info = '${androidInfo.name} - ${androidInfo.id}';
+        id = androidInfo.id;
+        name = androidInfo.name;
+      } else if (Platform.isIOS) {
+        IosDeviceInfo iosInfo = await deviceInfoPlugin.iosInfo;
+        info = '${iosInfo.model} - ${iosInfo.identifierForVendor}';
+        id = iosInfo.identifierForVendor;
+        name = iosInfo.name;
+      } else {
+        info = 'Perangkat tidak didukung';
+      }
+      logger.i(info);
+    } catch (e) {
+      info = 'Gagal mendapatkan info perangkat: $e';
+    }
+
+    if (mounted) {
+      setState(() {
+        _deviceInfo = info;
+        _deviceId = id ?? '';
+        _deviceName = name ?? '';
+      });
+    }
   }
 
   @override
@@ -123,6 +160,33 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
+  Future<void> updateTrackingNotification({
+    required String status,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final androidDetails = AndroidNotificationDetails(
+      'hajj_channel_id',
+      'Hajj Notifications',
+      channelDescription: 'Notification channel for Hajj Tracker',
+      importance: Importance.max,
+      priority: Priority.high,
+      ongoing: true,
+      autoCancel: false,
+      playSound: true,
+    );
+
+    final notificationDetails = NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      0, // Use same ID so it updates instead of creating a new notification
+      'Tracking Active',
+      'Status: $status\nLat: $latitude\nLng: $longitude',
+      notificationDetails,
+      payload: 'tracking_payload',
+    );
+  }
+
   Future<void> _onCheckLocationPressed() async {
     await initializeService();
 
@@ -166,12 +230,18 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (permissionGranted != PermissionStatus.granted) return;
     }
 
-    _locationSubscription = location.onLocationChanged.listen((locationData) {
+    _locationSubscription = location.onLocationChanged.listen((locationData) async{
       setState(() {
         latitudeText = locationData.latitude?.toString() ?? '-';
         longitudeText = locationData.longitude?.toString() ?? '-';
         accuracyText = locationData.accuracy?.toString() ?? '-';
       });
+      // Just update notification without sending to server
+      // await updateTrackingNotification(
+      //   status: isTracking ? "Tracking..." : "Paused",
+      //   latitude: locationData.latitude ?? 0,
+      //   longitude: locationData.longitude ?? 0,
+      // );
     });
 
     await _sendLocation();
@@ -187,7 +257,10 @@ class _TrackingScreenState extends State<TrackingScreen>
     final currentDateTime = DateTime.now().toIso8601String();
 
     final data = {
-      'user_id': userId,
+      'device': {
+        'id' : _deviceId,
+        'name' : _deviceName
+      },
       'latitude': loc.latitude,
       'longitude': loc.longitude,
       'created_at': currentDateTime,
@@ -200,6 +273,8 @@ class _TrackingScreenState extends State<TrackingScreen>
     // Note: We're relying on _syncOfflineData to find this record later.
     await LocalStorageHelper.saveTrackingAttempt(data, 'pending');
 
+    String sendStatus = "Pending";
+
     try {
       // NOTE: We assume the last added record is the one we are attempting to send.
       // A more robust way would be to get the ID back from saveTrackingAttempt.
@@ -211,14 +286,22 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (response.statusCode == 200 || response.statusCode == 201) {
         logger.i("✅ Location sent successfully");
         // Run sync immediately to mark this (and any other pending) record as sent
+        sendStatus = "Success";
         await _syncOfflineData();
       } else {
         // If API returns an error status code (but not a connection error)
         logger.w(
           "API returned status ${response.statusCode}. Will retry later.",
         );
+        sendStatus = "Failed (${response.statusCode})";
         // The record is already saved as 'pending', no change needed.
       }
+
+      await updateTrackingNotification(
+        status: sendStatus,
+        latitude: loc.latitude ?? 0,
+        longitude: loc.longitude ?? 0,
+      );
     } catch (e) {
       logger.e("Error sending location (connection error): $e");
       // The record is already saved as 'pending', it will be retried.
@@ -294,7 +377,8 @@ class _TrackingScreenState extends State<TrackingScreen>
     await FlutterBackgroundService().startService();
     FlutterBackgroundService().invoke("startScheduler", {
       "minutes": trackingIntervalMinutes,
-      "userId": userId,
+      "deviceId" : _deviceId,
+      "deviceName": _deviceName,
     });
   }
 
@@ -423,7 +507,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                         ),
                                         const SizedBox(height: 4),
                                         Textwidgets(
-                                          "User ID 202555125",
+                                          "Device ID $_deviceInfo",
                                           fontSize: 14 * fontScale,
                                           color: Colors.grey,
                                         ),

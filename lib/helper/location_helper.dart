@@ -104,8 +104,8 @@ class LocationHelper {
       logger.w(address);
 
       return {
-        'latitude': 'Lat: $lat',
-        'longitude': 'Lon: $lon',
+        'latitude': lat,
+        'longitude': lon,
         'accuracy': 'Akurasi: $acc',
         'address': address,
       };
