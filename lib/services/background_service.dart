@@ -30,6 +30,10 @@ Future<void> initializeService() async {
       initialNotificationTitle: 'Tracking Location',
       initialNotificationContent: 'Service is starting...',
       foregroundServiceNotificationId: 888,
+      foregroundServiceTypes: [
+        AndroidForegroundType.dataSync,
+        AndroidForegroundType.location
+      ]
     ),
     iosConfiguration: IosConfiguration(),
   );
@@ -37,7 +41,9 @@ Future<void> initializeService() async {
 
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
-  DartPluginRegistrant.ensureInitialized();
+  // DartPluginRegistrant.ensureInitialized();
+
+  int currentBatteryLevel = 0;
 
   if (service is AndroidServiceInstance) {
     service.on('setAsForeground').listen((event) {
@@ -46,6 +52,11 @@ void onStart(ServiceInstance service) async {
     service.on('setAsBackground').listen((event) {
       service.setAsBackgroundService();
     });
+    service.on("updateBattery").listen((event) {
+      currentBatteryLevel = event?["level"] ?? 0;
+      logger.i("🔋 Battery updated from main: $currentBatteryLevel%");
+    });
+
     service.on("startScheduler").listen((event) {
       if (event != null && event["minutes"] != null) {
         int newMinutes = event["minutes"];
@@ -60,13 +71,14 @@ void onStart(ServiceInstance service) async {
           try {
             Position pos = await Geolocator.getCurrentPosition(
               locationSettings: const LocationSettings(
-                accuracy: LocationAccuracy.high,
+                accuracy: LocationAccuracy.medium,
+                distanceFilter: 10,
               ),
             );
             logger.i(
               '📍 Background location: ${pos.latitude}, ${pos.longitude}',
             );
-            await sendLocation(deviceId,deviceName, pos.latitude, pos.longitude);
+            await sendLocation(deviceId,deviceName, pos.latitude, pos.longitude,currentBatteryLevel);
           } catch (e) {
             logger.i('⚠️ Failed to get location: $e');
           }
@@ -81,8 +93,8 @@ void onStart(ServiceInstance service) async {
   }
 }
 
-Future<void> sendLocation(String deviceId,String deviceName, double lat, double lon) async {
-  var batteryLevel = await battery.batteryLevel;
+Future<void> sendLocation(String deviceId,String deviceName, double lat, double lon,int batteryLevel) async {
+  // var batteryLevel = await battery.batteryLevel;
   final currentDateTime = DateTime.now().toIso8601String();
 
   final data = {

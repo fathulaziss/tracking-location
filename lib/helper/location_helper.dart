@@ -59,7 +59,9 @@ class LocationHelper {
         return {'error': 'Izin lokasi ditolak.'};
       }
     }
-
+    if (permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission(); // Try again for background
+    }
     if (permission == LocationPermission.deniedForever) {
       return {
         'error': 'Izin lokasi ditolak permanen. Silakan ubah di pengaturan.',

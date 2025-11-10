@@ -67,12 +67,12 @@ class _TrackingScreenState extends State<TrackingScreen>
     // LocalStorageHelper.cleanupOldRecords();
     LocalStorageHelper.clearAllHistory();
 
-    Connectivity().onConnectivityChanged.listen((status) async {
-      if (status != ConnectivityResult.none) {
-        logger.i("🌐 Network reconnected — syncing offline data");
-        await _syncOfflineData();
-      }
-    });
+    // Connectivity().onConnectivityChanged.listen((status) async {
+    //   if (status != ConnectivityResult.none) {
+    //     logger.i("🌐 Network reconnected — syncing offline data");
+    //     await _syncOfflineData();
+    //   }
+    // });
   }
 
   // --- DEVICE INFO LOGIC (Tidak berubah) ---
@@ -142,7 +142,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           channelDescription: 'Notification channel for Hajj Tracker',
           importance: Importance.max,
           priority: Priority.high,
-          playSound: true,
+          playSound: false,
           ongoing: true, // keeps it active (cannot be swiped away)
           autoCancel: false, // tapping it won't dismiss
         );
@@ -352,9 +352,11 @@ class _TrackingScreenState extends State<TrackingScreen>
     _notifyListRefresh();
   }
 
-  void stopTracking() {
+  void stopTracking() async{
     _locationSubscription?.cancel();
     _timer?.cancel();
+    await flutterLocalNotificationsPlugin.cancelAll();
+    _stopBackgroundTracking();
   }
 
   void onIntervalChanged(int newMinutes) {

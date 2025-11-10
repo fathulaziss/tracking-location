@@ -1,4 +1,6 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.tracking_location">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
@@ -21,7 +23,8 @@
     <application
         android:label="haji_tracker"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -47,9 +50,16 @@
 
         <!-- Background Service -->
         <service
-            android:name="com.ekasetiawans.flutter_background_service.BackgroundService"
-            android:exported="true"
-            android:foregroundServiceType="location" />
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:exported="false"
+            android:permission="android.permission.FOREGROUND_SERVICE"
+            android:foregroundServiceType="location|dataSync"
+            tools:replace="android:exported">
+            <intent-filter>
+                <action android:name="id.flutter.flutter_background_service.BackgroundService" />
+            </intent-filter>
+        </service>
+
 
         <!-- Flutter Local Notifications Receivers -->
         <receiver
