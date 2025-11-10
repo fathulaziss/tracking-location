@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:tracking_location/helper/app_logger.dart';
 import 'package:tracking_location/pages/SplashScreen.dart';
+import 'package:tracking_location/services/background_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -8,6 +10,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await initializeService();
 
   // ✅ Buat notification channel khusus untuk foreground service
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -35,6 +39,7 @@ Future<void> main() async {
       .resolvePlatformSpecificImplementation<
       AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
+  await AppLogger.init();
 
   runApp(const MyApp());
 }

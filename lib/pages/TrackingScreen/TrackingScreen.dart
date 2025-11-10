@@ -18,6 +18,7 @@ import 'package:tracking_location/pages/TrackingScreen/widgets/permission_dialog
 import 'package:tracking_location/services/background_service.dart';
 import 'package:tracking_location/widgets/PulsingDot.dart';
 import 'package:tracking_location/widgets/TextWidgets.dart';
+import 'package:tracking_location/helper/app_logger.dart';
 
 import '../../main.dart';
 
@@ -42,7 +43,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   String accuracyText = '';
   String errorText = '';
   final LocationHelper locationHelper = LocationHelper();
-  var logger = Logger();
+  // var logger = Logger();
   final Battery _battery = Battery();
   final dio = Dio();
   static const String apiUrl = 'http://34.101.176.197/api/v1/tracking';
@@ -69,7 +70,7 @@ class _TrackingScreenState extends State<TrackingScreen>
 
     getTrackingState().then((wasTracking) async {
       if (wasTracking) {
-        logger.i("🟢 App reopened — resume tracking automatically");
+        AppLogger.i("🟢 App reopened — resume tracking automatically");
         showSimpleNotification();
         await startTracking();
         setState(() => isTracking = true);
@@ -96,7 +97,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       } else {
         info = 'Perangkat tidak didukung';
       }
-      logger.i(info);
+      AppLogger.i(info);
     } catch (e) {
       info = 'Gagal mendapatkan info perangkat: $e';
     }
@@ -121,18 +122,18 @@ class _TrackingScreenState extends State<TrackingScreen>
     super.didChangeAppLifecycleState(state);
     if (state case AppLifecycleState.resumed) {
       if (isTracking) {
-        logger.i('✅ App is in foreground (onResume)');
+        AppLogger.i('✅ App is in foreground (onResume)');
         _stopBackgroundTracking();
         startTracking();
       }
     } else if (state case AppLifecycleState.paused) {
       if (isTracking) {
-        logger.i('⏸️ App is in background (onPause)');
+        AppLogger.i('⏸️ App is in background (onPause)');
         stopTracking();
         _startBackgroundTracking();
       }
     } else if (state case AppLifecycleState.detached) {
-      logger.i('❌ App is detached (destroyed)');
+      AppLogger.i('❌ App is detached (destroyed)');
     }
   }
 
@@ -190,7 +191,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   Future<void> _onCheckLocationPressed() async {
-    await initializeService();
+    // await initializeService();
 
     setState(() {
       latitudeText = 'Memeriksa...';
@@ -270,7 +271,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       'batrai': batteryLevel,
       'signal_level': 100,
     };
-    logger.i("Attempting to send location: $data");
+    AppLogger.i("Attempting to send location: $data");
 
     // Save the attempt immediately with 'pending' status
     // Note: We're relying on _syncOfflineData to find this record later.
@@ -287,13 +288,13 @@ class _TrackingScreenState extends State<TrackingScreen>
       final response = await dio.post(apiUrl, data: data);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        logger.i("✅ Location sent successfully");
+        AppLogger.i("✅ Location sent successfully");
         // Run sync immediately to mark this (and any other pending) record as sent
         sendStatus = "Success";
         await _syncOfflineData();
       } else {
         // If API returns an error status code (but not a connection error)
-        logger.w(
+        AppLogger.w(
           "API returned status ${response.statusCode}. Will retry later.",
         );
         sendStatus = "Failed (${response.statusCode})";
@@ -306,7 +307,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         longitude: loc.longitude ?? 0,
       );
     } catch (e) {
-      logger.e("Error sending location (connection error): $e");
+      AppLogger.e("Error sending location (connection error): $e");
       // The record is already saved as 'pending', it will be retried.
     }
 
@@ -321,7 +322,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     final unsentRecords = await LocalStorageHelper.getUnsentLocations();
     if (unsentRecords.isEmpty) return;
 
-    logger.i("Attempting to sync ${unsentRecords.length} unsent records.");
+    AppLogger.i("Attempting to sync ${unsentRecords.length} unsent records.");
 
     for (var record in unsentRecords) {
       final recordId = record['id'] as String;
@@ -333,22 +334,22 @@ class _TrackingScreenState extends State<TrackingScreen>
         if (response.statusCode == 200 || response.statusCode == 201) {
           // Update status to 'sent' upon success
           await LocalStorageHelper.updateRecordStatus(recordId, 'sent');
-          logger.i("✅ Synced record ID: $recordId");
+          AppLogger.i("✅ Synced record ID: $recordId");
         } else {
           // If a non-200 status is returned, stop sync and keep for later
-          logger.w(
+          AppLogger.w(
             "Sync stopped: API returned status ${response.statusCode} for record ID: $recordId",
           );
           return;
         }
       } catch (e) {
         // If an error occurs (like connection loss during sync), stop and keep remaining records for later
-        logger.e("Sync stopped due to connection error: $e");
+        AppLogger.e("Sync stopped due to connection error: $e");
         return;
       }
     }
 
-    logger.i("All unsent data synced successfully.");
+    AppLogger.i("All unsent data synced successfully.");
     // Run cleanup after a successful sync to remove any records older than 3 hours
     await LocalStorageHelper.cleanupOldRecords();
 
@@ -374,7 +375,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       Future.delayed(const Duration(milliseconds: 100), () {
         startTracking();
         setState(() => isTracking = true);
-        logger.i("Tracking started");
+        AppLogger.i("Tracking started");
       });
     }
   }
@@ -533,7 +534,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                           showSimpleNotification();
                                           startTracking();
                                           setState(() => isTracking = true);
-                                          logger.i("Tracking started");
+                                          AppLogger.i("Tracking started");
                                         }
                                       } else {
                                         await flutterLocalNotificationsPlugin

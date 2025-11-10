@@ -6,10 +6,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:logger/logger.dart';
+import 'package:tracking_location/helper/app_logger.dart';
 import 'package:tracking_location/helper/local_storage_helper.dart';
 
-final logger = Logger();
+// final AppLogger = Logger();
 final Battery battery = Battery();
 final dio = Dio();
 final String apiUrl = 'http://34.101.176.197/api/v1/tracking';
@@ -54,7 +54,7 @@ void onStart(ServiceInstance service) async {
     });
     service.on("updateBattery").listen((event) {
       currentBatteryLevel = event?["level"] ?? 0;
-      logger.i("🔋 Battery updated from main: $currentBatteryLevel%");
+      AppLogger.i("🔋 Battery updated from main: $currentBatteryLevel%");
     });
 
     service.on("startScheduler").listen((event) {
@@ -62,7 +62,7 @@ void onStart(ServiceInstance service) async {
         int newMinutes = event["minutes"];
         String deviceId = event["deviceId"] ?? "";
         String deviceName = event['deviceName'] ?? "";
-        logger.i(
+        AppLogger.i(
           "Background tracking started with interval: $newMinutes minutes",
         );
 
@@ -75,16 +75,16 @@ void onStart(ServiceInstance service) async {
                 distanceFilter: 10,
               ),
             );
-            logger.i(
+            AppLogger.i(
               '📍 Background location: ${pos.latitude}, ${pos.longitude}',
             );
             await sendLocation(deviceId,deviceName, pos.latitude, pos.longitude,currentBatteryLevel);
           } catch (e) {
-            logger.i('⚠️ Failed to get location: $e');
+            AppLogger.i('⚠️ Failed to get location: $e');
           }
         });
       } else {
-        logger.w("⚠️ Invalid start tracking event data: $event");
+        AppLogger.w("⚠️ Invalid start tracking event data: $event");
       }
     });
     service.on('stopService').listen((event) async {
@@ -108,20 +108,20 @@ Future<void> sendLocation(String deviceId,String deviceName, double lat, double 
     'batrai': batteryLevel,
     'signal_level': 100,
   };
-  logger.i("Attempting to send location: $data");
+  AppLogger.i("Attempting to send location: $data");
 
   try {
     final response = await dio.post(apiUrl, data: data);
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      logger.i("✅ Location sent successfully");
+      AppLogger.i("✅ Location sent successfully");
       await LocalStorageHelper.saveTrackingAttempt(data, 'sent');
     } else {
-      logger.w("API returned status ${response.statusCode}. Will retry later.");
+      AppLogger.w("API returned status ${response.statusCode}. Will retry later.");
       await LocalStorageHelper.saveTrackingAttempt(data, 'pending');
     }
   } catch (e) {
-    logger.e("Error sending location (connection error): $e");
+    AppLogger.e("Error sending location (connection error): $e");
     await LocalStorageHelper.saveTrackingAttempt(data, 'pending');
   }
 
