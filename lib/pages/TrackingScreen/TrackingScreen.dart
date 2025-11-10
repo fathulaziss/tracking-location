@@ -67,12 +67,14 @@ class _TrackingScreenState extends State<TrackingScreen>
     // LocalStorageHelper.cleanupOldRecords();
     LocalStorageHelper.clearAllHistory();
 
-    // Connectivity().onConnectivityChanged.listen((status) async {
-    //   if (status != ConnectivityResult.none) {
-    //     logger.i("🌐 Network reconnected — syncing offline data");
-    //     await _syncOfflineData();
-    //   }
-    // });
+    getTrackingState().then((wasTracking) async {
+      if (wasTracking) {
+        logger.i("🟢 App reopened — resume tracking automatically");
+        showSimpleNotification();
+        await startTracking();
+        setState(() => isTracking = true);
+      }
+    });
   }
 
   // --- DEVICE INFO LOGIC (Tidak berubah) ---
@@ -218,6 +220,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   Future<void> startTracking() async {
+    await saveTrackingState(true);
     bool serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
       serviceEnabled = await location.requestService();
@@ -353,6 +356,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   void stopTracking() async{
+    await saveTrackingState(false);
     _locationSubscription?.cancel();
     _timer?.cancel();
     await flutterLocalNotificationsPlugin.cancelAll();

@@ -100,3 +100,13 @@ class LocalStorageHelper {
     await prefs.remove(_key);
   }
 }
+
+Future<void> saveTrackingState(bool value) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isTracking', value);
+}
+
+Future<bool> getTrackingState() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool('isTracking') ?? false;
+}
