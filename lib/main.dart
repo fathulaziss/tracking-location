@@ -15,14 +15,14 @@ Future<void> main() async {
 
   // ✅ Buat notification channel khusus untuk foreground service
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
-    'location_channel', // unique ID
+    'hajj_channel_id', // unique ID
     'Location Tracking', // nama channel
     description: 'Channel untuk foreground location tracking',
     importance: Importance.low,
   );
 
   const AndroidInitializationSettings initializationSettingsAndroid =
-  AndroidInitializationSettings('@mipmap/ic_launcher'); // gunakan ic_launcher, bukan launcher_icon
+  AndroidInitializationSettings('@mipmap/launcher_icon'); // gunakan ic_launcher, bukan launcher_icon
 
   const DarwinInitializationSettings initializationSettingsDarwin =
   DarwinInitializationSettings();

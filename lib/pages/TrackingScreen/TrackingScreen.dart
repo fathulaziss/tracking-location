@@ -382,6 +382,7 @@ class _TrackingScreenState extends State<TrackingScreen>
 
   Future<void> _startBackgroundTracking() async {
     await FlutterBackgroundService().startService();
+    await Future.delayed(const Duration(seconds: 2));
     FlutterBackgroundService().invoke("startScheduler", {
       "minutes": trackingIntervalMinutes,
       "deviceId" : _deviceId,
