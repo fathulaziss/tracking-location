@@ -15,6 +15,9 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+val backgroundGeolocation = project(":flutter_background_geolocation")
+apply { from("${backgroundGeolocation.projectDir}/background_geolocation.gradle") }
+
 android {
     namespace = "com.example.tracking_location"
     compileSdk = flutter.compileSdkVersion

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "980914699767",
+    "project_id": "tracker-hajj",
+    "storage_bucket": "tracker-hajj.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:980914699767:android:49efd6b6f4b3136886c2f2",
+        "android_client_info": {
+          "package_name": "com.example.tracking_location"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmn0FP_V_e5Ifs1VvQjMA_tTIZdoAqKdk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
