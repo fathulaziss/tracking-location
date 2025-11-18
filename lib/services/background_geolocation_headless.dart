@@ -6,6 +6,8 @@ import 'package:tracking_location/helper/app_logger.dart';
 import 'package:tracking_location/helper/local_storage_helper.dart';
 import 'package:dio/dio.dart';
 import 'package:tracking_location/services/device_info_plus.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 final dio = Dio();
 const String apiUrl = 'http://34.101.176.197/api/v1/tracking';
@@ -44,6 +46,12 @@ void bgHeadlessTask(bg.HeadlessEvent headlessEvent) async {
               'batrai': 100,
               'signal_level': 100,
             };
+
+            // Analytics: log location attempt
+            FirebaseAnalytics.instance.logEvent(
+              name: "headless_location_attempt",
+              parameters: {"device_id": deviceInfo["id"] ?? '-'},
+            );
 
             AppLogger.i('[HEADLESS TIMER] Location: $data');
 
@@ -92,8 +100,25 @@ void bgHeadlessTask(bg.HeadlessEvent headlessEvent) async {
             }
 
             await LocalStorageHelper.cleanupOldRecords();
-          } catch (e) {
+          } catch (e,stack) {
             AppLogger.e('[HEADLESS TIMER] Error sending location: $e');
+
+            // Crashlytics: log non-fatal
+            FirebaseCrashlytics.instance.recordError(
+              "API error: $stack",
+              StackTrace.current,
+              reason: "Headless location send failed",
+              fatal: false,
+            );
+
+            // Analytics: log failure
+            FirebaseAnalytics.instance.logEvent(
+              name: "headless_location_failed",
+              parameters: {
+                "device_id": deviceInfo["id"] ?? '-',
+                "stack": stack
+              },
+            );
           }
         });
 
@@ -104,5 +129,14 @@ void bgHeadlessTask(bg.HeadlessEvent headlessEvent) async {
     }
   } catch (e, st) {
     AppLogger.e('[HEADLESS] Error: $e\n$st');
+
+    // Crashlytics: log exception
+    FirebaseCrashlytics.instance.recordError(e, st, reason: "Headless location exception");
+
+    // Analytics: log exception
+    FirebaseAnalytics.instance.logEvent(
+      name: "headless_location_exception",
+      parameters: {"device_id": '-', "error": e.toString()},
+    );
   }
 }

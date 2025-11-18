@@ -49,6 +49,9 @@ dependencies:
   flutter_timezone: ^5.0.1
   path_provider: ^2.1.5
   flutter_background_geolocation: ^4.18.1
+  firebase_core: ^4.2.1
+  firebase_analytics: ^12.0.4
+  firebase_crashlytics: ^5.0.5
 
 dev_dependencies:
   flutter_test:

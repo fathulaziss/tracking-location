@@ -4,6 +4,8 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:signal_strength_indicator/signal_strength_indicator.dart';
@@ -53,6 +55,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   void initState() {
     super.initState();
+
+    // 🔥 Log screen view
+    FirebaseAnalytics.instance.logScreenView(
+      screenName: "TrackingScreen",
+      screenClass: "TrackingScreen",
+    );
+
+    // 🔥 Log event
+    FirebaseAnalytics.instance.logEvent(
+      name: "tracking_screen_opened",
+      parameters: {"timestamp": DateTime.now().toIso8601String()},
+    );
+
     _getDeviceInfo();
     _configureBackgroundGeolocation();
     _onCheckLocationPressed();
@@ -116,7 +131,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     }
   }
 
-  void _startTrackingTimer() async{
+  void _startTrackingTimer() async {
     // Cancel any existing timer
     _trackingTimer?.cancel();
     AppLogger.w("Start Tracking");
@@ -141,29 +156,54 @@ class _TrackingScreenState extends State<TrackingScreen> {
           };
 
           AppLogger.i("Sending location (timer): $data");
-          final recordId = await LocalStorageHelper.saveTrackingAttempt(data, 'pending');
+          final recordId = await LocalStorageHelper.saveTrackingAttempt(
+            data,
+            'pending',
+          );
           String sendStatus = "Pending";
           final response = await dio.post(apiUrl, data: data);
           AppLogger.w("Response : $response");
           if (response.statusCode == 200 || response.statusCode == 201) {
             AppLogger.i("✅ Location sent successfully");
+            FirebaseAnalytics.instance.logEvent(
+              name: "location_sent_success",
+              parameters: {
+                "latitude": location.coords.latitude,
+                "longitude": location.coords.longitude,
+                "battery": batteryLevel,
+              },
+            );
             // await LocalStorageHelper.updateRecordStatus('last_id', 'sent');
             sendStatus = "Success";
             await _syncOfflineData();
-          }else{
+          } else {
             sendStatus = "Failed (${response.statusCode})";
           }
 
           _listInfoKey.currentState?.loadTrackingRecords();
-
 
           await updateTrackingNotification(
             status: sendStatus,
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           );
-        } catch (e) {
+        } catch (e, stack) {
           AppLogger.e("Error sending location: $e");
+          // 🔥 Crashlytics: laporkan error
+          FirebaseCrashlytics.instance.recordError(
+            e,
+            stack,
+            reason: "Send Location Failed",
+          );
+
+          // Analytics event
+          FirebaseAnalytics.instance.logEvent(
+            name: "location_send_error",
+            parameters: {
+              "error": e.toString(),
+              "timestamp": DateTime.now().toIso8601String(),
+            },
+          );
         }
       },
     );
@@ -179,6 +219,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     AppLogger.i("Attempting to sync ${unsentRecords.length} unsent records.");
 
+    // Analytics: Log the number of unsent records
+    FirebaseAnalytics.instance.logEvent(
+      name: "sync_offline_start",
+      parameters: {"unsent_count": unsentRecords.length},
+    );
+
     for (var record in unsentRecords) {
       final recordId = record['id'] as String;
       final locationData = record['data'] as Map<String, dynamic>;
@@ -190,21 +236,68 @@ class _TrackingScreenState extends State<TrackingScreen> {
           // Update status to 'sent' upon success
           await LocalStorageHelper.updateRecordStatus(recordId, 'sent');
           AppLogger.i("✅ Synced record ID: $recordId");
+
+          // Analytics: Log each successful record
+          FirebaseAnalytics.instance.logEvent(
+            name: "sync_record_success",
+            parameters: {
+              "record_id": recordId,
+              "latitude": locationData['latitude'],
+              "longitude": locationData['longitude'],
+            },
+          );
         } else {
-          // If a non-200 status is returned, stop sync and keep for later
           AppLogger.w(
             "Sync stopped: API returned status ${response.statusCode} for record ID: $recordId",
           );
+
+          // Crashlytics: Non-fatal error
+          FirebaseCrashlytics.instance.recordError(
+            "API returned status ${response.statusCode} for record ID: $recordId",
+            StackTrace.current,
+            reason: "Offline Sync Failed",
+            fatal: false,
+          );
+
+          // Analytics: Log failed record
+          FirebaseAnalytics.instance.logEvent(
+            name: "sync_record_failed",
+            parameters: {
+              "record_id": recordId,
+              "status_code": response.statusCode ?? '-',
+            },
+          );
+
           return;
         }
-      } catch (e) {
-        // If an error occurs (like connection loss during sync), stop and keep remaining records for later
+      } catch (e, stack) {
         AppLogger.e("Sync stopped due to connection error: $e");
+
+        // Crashlytics: capture the exception
+        FirebaseCrashlytics.instance.recordError(
+          e,
+          stack,
+          reason: "Offline Sync Exception",
+        );
+
+        // Analytics: log error
+        FirebaseAnalytics.instance.logEvent(
+          name: "sync_record_exception",
+          parameters: {"record_id": recordId, "error": e.toString()},
+        );
+
         return;
       }
     }
 
     AppLogger.i("All unsent data synced successfully.");
+
+    // Analytics: log overall success
+    FirebaseAnalytics.instance.logEvent(
+      name: "sync_offline_complete",
+      parameters: {"synced_count": unsentRecords.length},
+    );
+
     // Run cleanup after a successful sync to remove any records older than 3 hours
     await LocalStorageHelper.cleanupOldRecords();
 
@@ -242,7 +335,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
         longitudeText = location.coords.longitude.toString();
       });
       AppLogger.i("status Tracking : $isTracking");
-      if(isTracking ==  true){
+      if (isTracking == true) {
         _startTrackingTimer();
       }
     });
@@ -276,15 +369,45 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   Future<void> _startTracking() async {
-    await saveTrackingState(true);
-    await bg.BackgroundGeolocation.start();
-    setState(() => isTracking = true);
+    try {
+      await saveTrackingState(true);
+      await bg.BackgroundGeolocation.start();
+
+      setState(() => isTracking = true);
+
+      // 🔥 Analytics
+      FirebaseAnalytics.instance.logEvent(
+        name: "start_tracking",
+        parameters: {"device_id": _deviceId, "device_name": _deviceName},
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(
+        e,
+        stack,
+        reason: "Start Tracking Failed",
+      );
+    }
   }
 
   Future<void> _stopTracking() async {
-    await saveTrackingState(false);
-    await bg.BackgroundGeolocation.stop();
-    setState(() => isTracking = false);
+    try {
+      await saveTrackingState(false);
+      await bg.BackgroundGeolocation.stop();
+
+      setState(() => isTracking = false);
+
+      // 🔥 Analytics
+      FirebaseAnalytics.instance.logEvent(
+        name: "stop_tracking",
+        parameters: {"device_id": _deviceId},
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(
+        e,
+        stack,
+        reason: "Stop Tracking Failed",
+      );
+    }
   }
 
   @override

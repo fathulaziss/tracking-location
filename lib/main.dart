@@ -1,11 +1,17 @@
+import 'dart:async';
+
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tracking_location/helper/app_logger.dart';
 import 'package:tracking_location/pages/SplashScreen.dart';
 import 'package:tracking_location/services/background_geolocation_headless.dart';
 import 'package:tracking_location/services/background_service.dart';
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
-
+import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
+    as bg;
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'firebase_options.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -13,6 +19,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // await initializeService();
   bg.BackgroundGeolocation.registerHeadlessTask(bgHeadlessTask);
@@ -26,10 +34,12 @@ Future<void> main() async {
   );
 
   const AndroidInitializationSettings initializationSettingsAndroid =
-  AndroidInitializationSettings('@mipmap/launcher_icon'); // gunakan ic_launcher, bukan launcher_icon
+      AndroidInitializationSettings(
+        '@mipmap/launcher_icon',
+      ); // gunakan ic_launcher, bukan launcher_icon
 
   const DarwinInitializationSettings initializationSettingsDarwin =
-  DarwinInitializationSettings();
+      DarwinInitializationSettings();
 
   const InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
@@ -41,16 +51,23 @@ Future<void> main() async {
   // ✅ Daftarkan channel supaya valid sebelum service start
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>()
+        AndroidFlutterLocalNotificationsPlugin
+      >()
       ?.createNotificationChannel(channel);
   await AppLogger.init();
 
-  runApp(const MyApp());
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+  runZonedGuarded(
+    () => runApp(MyApp()),
+    (error, stack) => FirebaseCrashlytics.instance.recordError(error, stack),
+  );
 }
 
-
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  // const MyApp({super.key});
+
+  final FirebaseAnalytics analytics = FirebaseAnalytics.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +94,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
       home: const SplashScreen(),
+      navigatorObservers: [FirebaseAnalyticsObserver(analytics: analytics)],
     );
   }
 }
