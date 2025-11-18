@@ -1,26 +1,22 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:location/location.dart';
-import 'package:logger/logger.dart';
 import 'package:signal_strength_indicator/signal_strength_indicator.dart';
+import 'package:tracking_location/helper/app_logger.dart';
 import 'package:tracking_location/helper/local_storage_helper.dart';
 import 'package:tracking_location/helper/location_helper.dart';
+import 'package:tracking_location/main.dart';
 import 'package:tracking_location/pages/TrackingScreen/widgets/ListInformation.dart';
 import 'package:tracking_location/pages/TrackingScreen/widgets/permission_dialog.dart';
-import 'package:tracking_location/services/background_service.dart';
 import 'package:tracking_location/widgets/PulsingDot.dart';
 import 'package:tracking_location/widgets/TextWidgets.dart';
-import 'package:tracking_location/helper/app_logger.dart';
-
-import '../../main.dart';
+import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
+    as bg;
 
 class TrackingScreen extends StatefulWidget {
   const TrackingScreen({super.key});
@@ -29,31 +25,27 @@ class TrackingScreen extends StatefulWidget {
   State<TrackingScreen> createState() => _TrackingScreenState();
 }
 
-class _TrackingScreenState extends State<TrackingScreen>
-    with WidgetsBindingObserver {
-  bool isTracking = false;
-  final Location location = Location();
-  Timer? _timer;
+class _TrackingScreenState extends State<TrackingScreen> {
+  Timer? _trackingTimer;
   int trackingIntervalMinutes = 1;
-  StreamSubscription<LocationData>? _locationSubscription;
+  bool isTracking = false;
+  final Battery _battery = Battery();
+  final Dio dio = Dio();
+  static const String apiUrl = 'http://34.101.176.197/api/v1/tracking';
   final DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
+  String _deviceId = '';
+  String _deviceName = '';
   String latitudeText = 'Memuat...';
   String longitudeText = 'Memuat...';
   String addressText = 'Memuat...';
   String accuracyText = '';
   String errorText = '';
   final LocationHelper locationHelper = LocationHelper();
-  // var logger = Logger();
-  final Battery _battery = Battery();
-  final dio = Dio();
-  static const String apiUrl = 'http://34.101.176.197/api/v1/tracking';
-  static const int userId = 1;
+
   final GlobalKey<ListInformationState> _listInfoKey =
       GlobalKey<ListInformationState>();
-  String _deviceInfo = 'Memuat informasi perangkat...';
-  String _deviceId = "";
-  String _deviceName = "";
-   void _notifyListRefresh() {
+
+  void _notifyListRefresh() {
     // 2. Use the key to access the state and call the refresh method
     _listInfoKey.currentState?.loadTrackingRecords();
   }
@@ -61,133 +53,11 @@ class _TrackingScreenState extends State<TrackingScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _onCheckLocationPressed();
     _getDeviceInfo();
-    // Run initial cleanup on app start
-    // LocalStorageHelper.cleanupOldRecords();
+    _configureBackgroundGeolocation();
+    _onCheckLocationPressed();
+    // _loadTrackingState();
     LocalStorageHelper.clearAllHistory();
-
-    getTrackingState().then((wasTracking) async {
-      if (wasTracking) {
-        AppLogger.i("🟢 App reopened — resume tracking automatically");
-        showSimpleNotification();
-        await startTracking();
-        setState(() => isTracking = true);
-      }
-    });
-  }
-
-  // --- DEVICE INFO LOGIC (Tidak berubah) ---
-  Future<void> _getDeviceInfo() async {
-    String info = 'Tidak tersedia';
-    String? id = '';
-    String? name = '';
-    try {
-      if (Platform.isAndroid) {
-        AndroidDeviceInfo androidInfo = await deviceInfoPlugin.androidInfo;
-        info = '${androidInfo.name} - ${androidInfo.id}';
-        id = androidInfo.id;
-        name = androidInfo.name;
-      } else if (Platform.isIOS) {
-        IosDeviceInfo iosInfo = await deviceInfoPlugin.iosInfo;
-        info = '${iosInfo.model} - ${iosInfo.identifierForVendor}';
-        id = iosInfo.identifierForVendor;
-        name = iosInfo.name;
-      } else {
-        info = 'Perangkat tidak didukung';
-      }
-      AppLogger.i(info);
-    } catch (e) {
-      info = 'Gagal mendapatkan info perangkat: $e';
-    }
-
-    if (mounted) {
-      setState(() {
-        _deviceInfo = info;
-        _deviceId = id ?? '';
-        _deviceName = name ?? '';
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-    WidgetsBinding.instance.removeObserver(this);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state case AppLifecycleState.resumed) {
-      if (isTracking) {
-        AppLogger.i('✅ App is in foreground (onResume)');
-        _stopBackgroundTracking();
-        startTracking();
-      }
-    } else if (state case AppLifecycleState.paused) {
-      if (isTracking) {
-        AppLogger.i('⏸️ App is in background (onPause)');
-        stopTracking();
-        _startBackgroundTracking();
-      }
-    } else if (state case AppLifecycleState.detached) {
-      AppLogger.i('❌ App is detached (destroyed)');
-    }
-  }
-
-  Future<void> showSimpleNotification() async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-          'hajj_channel_id', // unique channel id
-          'Hajj Notifications', // channel name
-          channelDescription: 'Notification channel for Hajj Tracker',
-          importance: Importance.max,
-          priority: Priority.high,
-          playSound: false,
-          ongoing: true, // keeps it active (cannot be swiped away)
-          autoCancel: false, // tapping it won't dismiss
-        );
-
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
-    );
-
-    await flutterLocalNotificationsPlugin.show(
-      0, // notification id
-      'Tracking Active', // title
-      'Your location tracking is running...!', // body
-      notificationDetails,
-      payload: 'tracking_payload', // optional
-    );
-  }
-
-  Future<void> updateTrackingNotification({
-    required String status,
-    required double latitude,
-    required double longitude,
-  }) async {
-    final androidDetails = AndroidNotificationDetails(
-      'hajj_channel_id',
-      'Hajj Notifications',
-      channelDescription: 'Notification channel for Hajj Tracker',
-      importance: Importance.max,
-      priority: Priority.high,
-      ongoing: true,
-      autoCancel: false,
-      playSound: true,
-    );
-
-    final notificationDetails = NotificationDetails(android: androidDetails);
-
-    await flutterLocalNotificationsPlugin.show(
-      0, // Use same ID so it updates instead of creating a new notification
-      'Tracking Active',
-      'Status: $status\nLat: $latitude\nLng: $longitude',
-      notificationDetails,
-      payload: 'tracking_payload',
-    );
   }
 
   Future<void> _onCheckLocationPressed() async {
@@ -220,100 +90,85 @@ class _TrackingScreenState extends State<TrackingScreen>
     }
   }
 
-  Future<void> startTracking() async {
-    await saveTrackingState(true);
-    bool serviceEnabled = await location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await location.requestService();
-      if (!serviceEnabled) return;
+  Future<void> _getDeviceInfo() async {
+    try {
+      if (Platform.isAndroid) {
+        final info = await deviceInfoPlugin.androidInfo;
+        _deviceId = info.id ?? 'unknown';
+        _deviceName = info.model ?? 'unknown';
+      } else if (Platform.isIOS) {
+        final info = await deviceInfoPlugin.iosInfo;
+        _deviceId = info.identifierForVendor ?? 'unknown';
+        _deviceName = info.name ?? 'unknown';
+      }
+    } catch (e) {
+      _deviceId = 'unknown';
+      _deviceName = 'unknown';
     }
-
-    PermissionStatus permissionGranted = await location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return;
-    }
-
-    _locationSubscription = location.onLocationChanged.listen((locationData) async{
-      setState(() {
-        latitudeText = locationData.latitude?.toString() ?? '-';
-        longitudeText = locationData.longitude?.toString() ?? '-';
-        accuracyText = locationData.accuracy?.toString() ?? '-';
-      });
-      // Just update notification without sending to server
-      // await updateTrackingNotification(
-      //   status: isTracking ? "Tracking..." : "Paused",
-      //   latitude: locationData.latitude ?? 0,
-      //   longitude: locationData.longitude ?? 0,
-      // );
-    });
-
-    await _sendLocation();
-    _timer = Timer.periodic(
-      Duration(minutes: trackingIntervalMinutes),
-      (timer) async => await _sendLocation(),
-    );
+    setState(() {});
   }
 
-  Future<void> _sendLocation() async {
-    final loc = await location.getLocation();
-    var batteryLevel = await _battery.batteryLevel;
-    final currentDateTime = DateTime.now().toIso8601String();
-
-    final data = {
-      'device': {
-        'id' : _deviceId,
-        'name' : _deviceName
-      },
-      'latitude': loc.latitude,
-      'longitude': loc.longitude,
-      'created_at': currentDateTime,
-      'batrai': batteryLevel,
-      'signal_level': 100,
-    };
-    AppLogger.i("Attempting to send location: $data");
-
-    // Save the attempt immediately with 'pending' status
-    // Note: We're relying on _syncOfflineData to find this record later.
-    await LocalStorageHelper.saveTrackingAttempt(data, 'pending');
-
-    String sendStatus = "Pending";
-
-    try {
-      // NOTE: We assume the last added record is the one we are attempting to send.
-      // A more robust way would be to get the ID back from saveTrackingAttempt.
-      // For this example, we'll simply check if the send was successful and then
-      // run a sync right after, which will mark it as sent.
-
-      final response = await dio.post(apiUrl, data: data);
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        AppLogger.i("✅ Location sent successfully");
-        // Run sync immediately to mark this (and any other pending) record as sent
-        sendStatus = "Success";
-        await _syncOfflineData();
-      } else {
-        // If API returns an error status code (but not a connection error)
-        AppLogger.w(
-          "API returned status ${response.statusCode}. Will retry later.",
-        );
-        sendStatus = "Failed (${response.statusCode})";
-        // The record is already saved as 'pending', no change needed.
-      }
-
-      await updateTrackingNotification(
-        status: sendStatus,
-        latitude: loc.latitude ?? 0,
-        longitude: loc.longitude ?? 0,
-      );
-    } catch (e) {
-      AppLogger.e("Error sending location (connection error): $e");
-      // The record is already saved as 'pending', it will be retried.
+  Future<void> _loadTrackingState() async {
+    AppLogger.d("Load Tracking State");
+    final wasTracking = await getTrackingState();
+    if (wasTracking) {
+      _startTracking();
     }
+  }
 
-    // Always clean up old records after a send attempt
-    await LocalStorageHelper.cleanupOldRecords();
+  void _startTrackingTimer() async{
+    // Cancel any existing timer
+    _trackingTimer?.cancel();
+    AppLogger.w("Start Tracking");
+    _trackingTimer = Timer.periodic(
+      Duration(minutes: trackingIntervalMinutes),
+      (timer) async {
+        try {
+          final location = await bg.BackgroundGeolocation.getCurrentPosition(
+            persist: false,
+            samples: 1,
+          );
 
+          final batteryLevel = await _battery.batteryLevel;
+
+          final data = {
+            'device': {'id': _deviceId, 'name': _deviceName},
+            'latitude': location.coords.latitude,
+            'longitude': location.coords.longitude,
+            'created_at': DateTime.now().toIso8601String(),
+            'batrai': batteryLevel,
+            'signal_level': 100,
+          };
+
+          AppLogger.i("Sending location (timer): $data");
+          final recordId = await LocalStorageHelper.saveTrackingAttempt(data, 'pending');
+          String sendStatus = "Pending";
+          final response = await dio.post(apiUrl, data: data);
+          AppLogger.w("Response : $response");
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            AppLogger.i("✅ Location sent successfully");
+            // await LocalStorageHelper.updateRecordStatus('last_id', 'sent');
+            sendStatus = "Success";
+            await _syncOfflineData();
+          }else{
+            sendStatus = "Failed (${response.statusCode})";
+          }
+
+          _listInfoKey.currentState?.loadTrackingRecords();
+
+
+          await updateTrackingNotification(
+            status: sendStatus,
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          );
+        } catch (e) {
+          AppLogger.e("Error sending location: $e");
+        }
+      },
+    );
+
+    // isTracking = true;
     _notifyListRefresh();
   }
 
@@ -356,42 +211,105 @@ class _TrackingScreenState extends State<TrackingScreen>
     _notifyListRefresh();
   }
 
-  void stopTracking() async{
-    await saveTrackingState(false);
-    _locationSubscription?.cancel();
-    _timer?.cancel();
-    await flutterLocalNotificationsPlugin.cancelAll();
-    _stopBackgroundTracking();
+  void _configureBackgroundGeolocation() async {
+    await bg.BackgroundGeolocation.ready(
+      bg.Config(
+        desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
+        distanceFilter: 10,
+        stopOnTerminate: false,
+        startOnBoot: true,
+        enableHeadless: true,
+        foregroundService: true,
+        notification: bg.Notification(
+          channelName: 'Hajj Notifications',
+          channelId: 'hajj_channel_id',
+          title: 'Tracking Active',
+          text: 'Your location is being tracked',
+        ),
+        debug: true,
+        logLevel: bg.Config.LOG_LEVEL_VERBOSE,
+      ),
+    );
+    AppLogger.i("status Tracking : $isTracking");
+    // if(isTracking){
+    //   _startTrackingTimer();
+    // }
+
+    // Listen to location updates
+    bg.BackgroundGeolocation.onLocation((bg.Location location) {
+      setState(() {
+        latitudeText = location.coords.latitude.toString();
+        longitudeText = location.coords.longitude.toString();
+      });
+      AppLogger.i("status Tracking : $isTracking");
+      if(isTracking ==  true){
+        _startTrackingTimer();
+      }
+    });
   }
 
-  void onIntervalChanged(int newMinutes) {
+  Future<void> updateTrackingNotification({
+    required String status,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final androidDetails = AndroidNotificationDetails(
+      'hajj_channel_id',
+      'Hajj Notifications',
+      channelDescription: 'Notification channel for Hajj Tracker',
+      importance: Importance.max,
+      priority: Priority.high,
+      ongoing: true,
+      autoCancel: false,
+      playSound: true,
+    );
+
+    final notificationDetails = NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      0, // Use same ID so it updates instead of creating a new notification
+      'Tracking Active',
+      'Status: $status\nLat: $latitude\nLng: $longitude',
+      notificationDetails,
+      payload: 'tracking_payload',
+    );
+  }
+
+  Future<void> _startTracking() async {
+    await saveTrackingState(true);
+    await bg.BackgroundGeolocation.start();
+    setState(() => isTracking = true);
+  }
+
+  Future<void> _stopTracking() async {
+    await saveTrackingState(false);
+    await bg.BackgroundGeolocation.stop();
+    setState(() => isTracking = false);
+  }
+
+  @override
+  void dispose() {
+    bg.BackgroundGeolocation.removeListeners();
+    super.dispose();
+  }
+
+  Future<void> onIntervalChanged(int newMinutes) async {
     setState(() {
       trackingIntervalMinutes = newMinutes;
     });
 
     if (isTracking) {
-      stopTracking();
+      await bg.BackgroundGeolocation.stop();
       setState(() => isTracking = false);
-      Future.delayed(const Duration(milliseconds: 100), () {
-        startTracking();
+      Future.delayed(const Duration(milliseconds: 100), () async {
+        await bg.BackgroundGeolocation.setConfig(
+          bg.Config(extras: {"trackingIntervalMinutes": newMinutes}),
+        );
+        await bg.BackgroundGeolocation.start();
         setState(() => isTracking = true);
         AppLogger.i("Tracking started");
       });
     }
-  }
-
-  Future<void> _startBackgroundTracking() async {
-    await FlutterBackgroundService().startService();
-    await Future.delayed(const Duration(seconds: 2));
-    FlutterBackgroundService().invoke("startScheduler", {
-      "minutes": trackingIntervalMinutes,
-      "deviceId" : _deviceId,
-      "deviceName": _deviceName,
-    });
-  }
-
-  void _stopBackgroundTracking() {
-    FlutterBackgroundService().invoke("stopService");
   }
 
   @override
@@ -515,7 +433,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                                         ),
                                         const SizedBox(height: 4),
                                         Textwidgets(
-                                          "Device ID $_deviceInfo",
+                                          "Device ID $_deviceId",
                                           fontSize: 14 * fontScale,
                                           color: Colors.grey,
                                         ),
@@ -532,15 +450,17 @@ class _TrackingScreenState extends State<TrackingScreen>
                                               DialogType.tracking,
                                             );
                                         if (confirmed == true) {
-                                          showSimpleNotification();
-                                          startTracking();
+                                          // showSimpleNotification();
+                                          // startTracking();
+                                          _startTracking();
                                           setState(() => isTracking = true);
                                           AppLogger.i("Tracking started");
                                         }
                                       } else {
-                                        await flutterLocalNotificationsPlugin
-                                            .cancel(0);
-                                        stopTracking();
+                                        // await flutterLocalNotificationsPlugin
+                                        //     .cancel(0);
+                                        // stopTracking();
+                                        _stopTracking();
                                         setState(() => isTracking = false);
                                       }
                                     },
@@ -596,10 +516,8 @@ class _TrackingScreenState extends State<TrackingScreen>
               ),
             ),
           ),
-
-          // Draggable bottom info sheet
           ListInformation(
-            key: _listInfoKey, // Pass the key here
+            key: _listInfoKey,
             onIntervalChanged: onIntervalChanged,
           ),
         ],

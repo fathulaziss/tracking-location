@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tracking_location/helper/app_logger.dart';
 import 'package:tracking_location/pages/SplashScreen.dart';
+import 'package:tracking_location/services/background_geolocation_headless.dart';
 import 'package:tracking_location/services/background_service.dart';
+import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
+
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -11,7 +14,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await initializeService();
+  // await initializeService();
+  bg.BackgroundGeolocation.registerHeadlessTask(bgHeadlessTask);
 
   // ✅ Buat notification channel khusus untuk foreground service
   const AndroidNotificationChannel channel = AndroidNotificationChannel(

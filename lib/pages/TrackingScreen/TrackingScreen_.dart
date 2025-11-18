@@ -67,6 +67,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     LocalStorageHelper.clearAllHistory();
 
     getTrackingState().then((wasTracking) async {
+      AppLogger.i("Cek Tracking Status: $wasTracking");
       if (wasTracking) {
         AppLogger.i("🟢 App reopened — resume tracking automatically");
         showSimpleNotification();

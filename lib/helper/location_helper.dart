@@ -93,8 +93,13 @@ class LocationHelper {
 
       final lat = position.latitude.toStringAsFixed(6);
       final lon = position.longitude.toStringAsFixed(6);
-      final acc = "${position.accuracy.toStringAsFixed(1)} m";
+      final acc = position.accuracy.toStringAsFixed(1);
 
+      logger.w(lat);
+      logger.w(lon);
+      logger.w(acc);
+
+      await Future.delayed(const Duration(seconds: 2));
       String address = await getAddressFromLatLong(
         position.latitude,
         position.longitude,
